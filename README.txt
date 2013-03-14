@@ -64,7 +64,8 @@ Execute *Redmine* installation
     $ bin/fab vagrant install
 
 
-To test your installion, go to `http://redmine.example.com <http://redmine.example.com>`_.
+To test your installion, go to `http://redmine.example.com/redmine/ <http://redmine.example.com/redmine/>`_.
+By default, Redmine admin user is ``admin`` and password ``admin``.
 
 
 More info : contact me at `contact@stephane-klein.info <mailto:contact@stephane-klein.info>`_

@@ -65,7 +65,8 @@ def install():
         'ruby1.8',
         'ruby1.8-dev',
         'supervisor',
-        'python-pip'
+        'python-pip',
+        'python-dev'
     ])
 
     require.deb.nopackages([
@@ -155,6 +156,7 @@ startsecs=10
 redirect_stderr=true
 stdout_logfile=/var/log/supervisor/redmine-thin.log
 command=/home/redmine/gem/bin/thin -C config/thin.conf -p 30%(process_num)02d start
+environment=GEM_HOME='/home/redmine/gem',RUBYLIB='/home/redmine/lib',RAILS_ENV='production'
 """
     )
     run('supervisorctl reload')
@@ -168,7 +170,7 @@ command=/home/redmine/gem/bin/thin -C config/thin.conf -p 30%(process_num)02d st
 
     SSLEngine On
     SSLCertificateFile /etc/ssl/localcerts/apache.pem
-    SSLCertificateFile /etc/ssl/localcerts/apache.pem
+    SSLCertificateKeyFile /etc/ssl/localcerts/apache.key
 
     <Proxy *>
         Order allow,deny
@@ -200,8 +202,9 @@ command=/home/redmine/gem/bin/thin -C config/thin.conf -p 30%(process_num)02d st
     run('a2enmod rewrite')
     run('a2enmod headers')
     run('a2enmod ssl')
+    run('a2enmod proxy_balancer')
 
-    if not fabtools.file.is_file('/etc/ssl/localcerts/apache.key'):
+    if not fabtools.files.is_file('/etc/ssl/localcerts/apache.key'):
         require.file(
             '/tmp/openssl.cnf',
             """\
@@ -220,7 +223,7 @@ emailAddress = contact@example.com
 """
         )
         run('mkdir -p /etc/ssl/localcerts')
-        run('openssl req -confi /tmp/openssl.cnf -new -x509 -days 365 -nodes -out /etc/ssl/localcerts/apache.pem -keyout /etc/ssl/localcerts/apache.key')
+        run('openssl req -config /tmp/openssl.cnf -new -x509 -days 365 -nodes -out /etc/ssl/localcerts/apache.pem -keyout /etc/ssl/localcerts/apache.key')
         run('rm /tmp/openssl.cnf')
 
     run('pip install mercurial')
