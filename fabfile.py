@@ -15,6 +15,8 @@ def vagrant(name=''):
 
     env['mysql_user'] = 'root'
     env['mysql_password'] = os.environ.get('MYSQL_PASSWORD', 'password')
+    env['redmine_version'] = 'trunk'
+    # env['redmine_version'] = 'http://rubyforge.org/frs/download.php/76771/redmine-2.2.3.tar.gz'
 
 
 def _add_user(*args, **kwargs):
@@ -38,6 +40,7 @@ def upgrade():
 
 @task
 def install():
+    env['redmine_version'] = env.get('redmine_version', 'http://rubyforge.org/frs/download.php/76771/redmine-2.2.3.tar.gz')
     require.deb.packages(['sudo'])
 
     fabtools.require.system.locale('fr_FR.UTF-8')
@@ -66,7 +69,13 @@ def install():
         'ruby1.8-dev',
         'supervisor',
         'python-pip',
-        'python-dev'
+        'python-dev',
+        'subversion',
+        'libxslt1-dev',
+        'libxml2-dev',
+        'libmysqld-dev',
+        'libmagick++-dev',
+        'libsqlite3-dev'
     ])
 
     require.deb.nopackages([
@@ -94,24 +103,25 @@ export RAILS_ENV=production
 """
         )
         files.append('/home/redmine/.profile', 'source ~/ruby-env')
-        run('wget http://rubyforge.org/frs/download.php/74619/rubygems-1.7.2.tgz')
-        run('tar xzf rubygems-1.7.2.tgz')
-        run('cd rubygems-1.7.2; ruby setup.rb --prefix=~ --no-format-executable')
+        run('wget http://production.cf.rubygems.org/rubygems/rubygems-2.0.3.tgz')
+        run('tar xzf rubygems-2.0.3.tgz')
+        run('cd rubygems-2.0.3; ruby setup.rb --prefix=~ --no-format-executable')
         run('rm -rf rubygems*')
-        run('gem install rake -v 0.8.7')
-        run('gem install rack -v 1.1.3')
-        run('gem install ruby-mysql')
-        run('gem install thin')
-        run('wget http://rubyforge.org/frs/download.php/75814/redmine-1.3.1.tar.gz')
-        run('tar xzf redmine-1.3.1.tar.gz')
-        run('mv redmine-1.3.1 redmine')
+        run('gem install bundler')
+        if env['redmine_version'] == 'trunk':
+            run('svn co http://svn.redmine.org/redmine/trunk redmine-trunk')
+            run('mv redmine-trunk redmine')
+        else:
+            run('wget %s' % env['redmine_version'])
+            run('tar xzf redmine-*')
+            run('mv redmine-* redmine')
+
         with cd('/home/redmine/redmine/'):
-            pass
             require.file(
                 '/home/redmine/redmine/config/database.yml',
                 """\
 production:
-    adapter: mysql
+    adapter: mysql2
     database: redmine
     host: localhost
     socket: /var/run/mysqld/mysqld.sock
@@ -132,15 +142,16 @@ daemonize: false
 chdir: /home/redmine/redmine
 pid: tmp/pids/thin.pid
 log: log/thin.log
-prefix: /redmine
+prefix: /
 environment: production
 """
             )
             run('chmod 0600 config/database.yml')
-            run('rake gems:install')
-            run('rake generate_session_store')
+            files.append('/home/redmine/redmine/Gemfile', 'gem "thin"')
+            run('bundle install --without sqlite postgresql')
+            run('rake generate_secret_token')
             run('rake db:migrate')
-            run('export REDMINE_LANG="fr"; rake redmine:load_default_data')
+            run('rake redmine:load_default_data REDMINE_LANG=en')
 
     require.file(
         '/etc/supervisor/conf.d/redmine.conf',
@@ -165,8 +176,15 @@ environment=GEM_HOME='/home/redmine/gem',RUBYLIB='/home/redmine/lib',RAILS_ENV='
     require.file(
         '/etc/apache2/sites-available/redmine.conf',
         """\
+<VirtualHost *:80>
+    ServerName redmine.example.com
+
+    Redirect / https://redmine.example.com/
+</VirtualHost>
 <VirtualHost *:443>
     ServerName redmine.example.com
+
+    DocumentRoot /home/redmine/redmine/public/
 
     SSLEngine On
     SSLCertificateFile /etc/ssl/localcerts/apache.pem
@@ -187,11 +205,9 @@ environment=GEM_HOME='/home/redmine/gem',RUBYLIB='/home/redmine/lib',RAILS_ENV='
         Allow from all
     </Proxy>
 
-    Alias /redmine /home/redmine/redmine/public
-
     RewriteEngine On
     RewriteCond %{LA-U:REQUEST_FILENAME} !-f
-    RewriteRule ^/redmine(.*) balancer://redmine_app/redmine$1 [P,L]
+    RewriteRule ^(.*) balancer://redmine_app/$1 [P,L]
 
     RequestHeader set X_FORWARDED_PROTO 'https'
 </VirtualHost>
