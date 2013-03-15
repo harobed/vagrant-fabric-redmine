@@ -18,7 +18,7 @@ Prerequisites :
 
 .. code-block:: sh
 
-    $ sudo apt-get install virtualbox rubygem1.8
+    $ sudo apt-get install virtualbox rubygems1.8
 
 
 On Mac OS X
